@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% set type_labels = {"youtube": "قناة يوتيوب", "blog": "مدونة", "arxiv": "ورقة arXiv"} %}
+{% block title %}المصادر — مجمّع أخبار الذكاء الاصطناعي{% endblock %}
+{% block content %}
+  <h1>المصادر</h1>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>الاسم</th>
+        <th>النوع</th>
+        <th>الرابط</th>
+        <th>آخر سحب</th>
+        <th>الحالة</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for source in sources %}
+      <tr>
+        <td>{{ source.name }}</td>
+        <td>{{ type_labels.get(source.source_type.value, source.source_type.value) }}</td>
+        <td><a href="{{ source.url }}" target="_blank" rel="noopener">{{ source.url }}</a></td>
+        <td>{{ source.last_fetched_at or "—" }}</td>
+        <td>
+          <span class="badge {{ 'badge-active' if source.is_active else 'badge-inactive' }}">
+            {{ "نشط" if source.is_active else "متوقف" }}
+          </span>
+        </td>
+        <td>
+          <form method="post" action="/sources/{{ source.id }}/toggle">
+            <button type="submit">{{ "إيقاف" if source.is_active else "تفعيل" }}</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">ما فيه مصادر بعد.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>إضافة مصدر جديد</h2>
+  <form method="post" action="/sources" class="add-form">
+    <label>الاسم <input type="text" name="name" required></label>
+    <label>النوع
+      <select name="source_type" required>
+        {% for t in source_types %}
+        <option value="{{ t.value }}">{{ type_labels.get(t.value, t.value) }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>الرابط (Blog URL أو Channel URL) <input type="url" name="url" required></label>
+    <label>RSS URL (لليوتيوب فقط) <input type="url" name="rss_url"></label>
+    <button type="submit">إضافة</button>
+  </form>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}الملخصات اليومية — مجمّع أخبار الذكاء الاصطناعي{% endblock %}
+{% block content %}
+  <h1>أرشيف الملخصات اليومية</h1>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>التاريخ</th>
+        <th>عدد المقالات</th>
+        <th>الحالة</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for digest in digests %}
+      <tr>
+        <td>{{ digest.digest_date }}</td>
+        <td>{{ digest.article_count }}</td>
+        <td>
+          <span class="badge {{ 'badge-active' if digest.is_sent else 'badge-inactive' }}">
+            {{ "أُرسل" if digest.is_sent else "لم يُرسل بعد" }}
+          </span>
+        </td>
+        <td><a href="/digests/{{ digest.digest_date }}">عرض</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4">ما فيه ملخصات بعد — شغّل الـ pipeline أول مرة.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

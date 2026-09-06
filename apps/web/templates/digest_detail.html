@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}ملخص {{ digest.digest_date }} — مجمّع أخبار الذكاء الاصطناعي{% endblock %}
+{% block content %}
+  <p><a href="/digests">&larr; رجوع للأرشيف</a></p>
+  <h1>ملخص يوم {{ digest.digest_date }}</h1>
+  <p class="meta">
+    {{ digest.article_count }} مقال —
+    {{ "أُرسل بتاريخ " ~ digest.sent_at if digest.is_sent else "لم يُرسل بعد" }}
+  </p>
+  <div class="digest-body">
+    {{ digest.summary_text | safe }}
+  </div>
+{% endblock %}

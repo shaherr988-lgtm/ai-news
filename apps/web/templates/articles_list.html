@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}المقالات — مجمّع أخبار الذكاء الاصطناعي{% endblock %}
+{% block content %}
+  <h1>المقالات</h1>
+
+  <form method="get" action="/articles" class="filter-form">
+    <label>تصفية حسب المصدر
+      <select name="source_id" onchange="this.form.submit()">
+        <option value="">الكل</option>
+        {% for s in sources %}
+        <option value="{{ s.id }}" {{ "selected" if s.id == selected_source_id else "" }}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+
+  <ul class="article-list">
+    {% for article in articles %}
+    <li class="article-item">
+      <a href="{{ article.url }}" target="_blank" rel="noopener"><strong>{{ article.title }}</strong></a>
+      <div class="meta">{{ article.source.name }} — {{ article.published_at }}</div>
+      {% if article.summary %}
+      <p class="summary">{{ article.summary }}</p>
+      {% endif %}
+    </li>
+    {% else %}
+    <li>ما فيه مقالات بعد.</li>
+    {% endfor %}
+  </ul>
+{% endblock %}

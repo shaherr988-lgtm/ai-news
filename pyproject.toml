@@ -1,0 +1,41 @@
+[project]
+name = "ai-news-aggregator"
+version = "0.1.0"
+description = "Daily AI news + education aggregator: pulls YouTube + blog + arXiv sources, summarizes with an LLM in Arabic, emails a daily digest, and answers questions over the content via RAG chat."
+requires-python = ">=3.11"
+dependencies = [
+    "sqlalchemy>=2.0",
+    "psycopg2-binary>=2.9",
+    "pgvector>=0.3",
+    "requests>=2.31",
+    "feedparser>=6.0",
+    "beautifulsoup4>=4.12",
+    "python-dotenv>=1.0",
+    "pydantic-settings>=2.2",
+    "openai>=1.40",
+    "anthropic>=0.34",
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "bleach>=6.1",
+    "youtube-transcript-api>=0.6",
+    "google-genai>=0.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.14",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["apps*", "scripts*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
