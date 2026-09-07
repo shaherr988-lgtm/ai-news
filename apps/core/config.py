@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     basic_auth_username: str | None = None
     basic_auth_password: str | None = None
 
+    # Secret token for POST /internal/run-daily — lets a free external cron
+    # service (e.g. cron-job.org) trigger the daily pipeline over HTTP, since
+    # Render's own Cron Job service has no free tier. Exempted from
+    # BasicAuthMiddleware (see apps/web/main.py) so the external scheduler
+    # doesn't also need Basic Auth credentials — the token alone gates it.
+    run_daily_token: str | None = None
+
     # Optional: Webshare (or similar) residential proxy for YouTube transcript
     # fetching — usually only needed once deployed to a datacenter host (e.g.
     # Render), which YouTube tends to block transcript requests from. Read

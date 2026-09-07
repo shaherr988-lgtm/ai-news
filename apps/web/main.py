@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from apps.core.config import get_settings
-from apps.web.routers import articles, chat, digests, sources
+from apps.web.routers import articles, chat, digests, internal, sources
 
 app = FastAPI(title="مجمّع أخبار الذكاء الاصطناعي")
 
@@ -19,6 +19,13 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
     substitute for real auth in a multi-user deployment."""
 
     async def dispatch(self, request: Request, call_next):
+        # A free external cron service triggers this route daily and can't
+        # easily send Basic Auth credentials — RUN_DAILY_TOKEN in the query
+        # string is that route's own auth mechanism instead (see
+        # apps/web/routers/internal.py).
+        if request.url.path == "/internal/run-daily":
+            return await call_next(request)
+
         settings = get_settings()
         if not (settings.basic_auth_username and settings.basic_auth_password):
             return await call_next(request)
@@ -54,6 +61,7 @@ app.include_router(sources.router)
 app.include_router(articles.router)
 app.include_router(digests.router)
 app.include_router(chat.router)
+app.include_router(internal.router)
 
 
 @app.get("/")

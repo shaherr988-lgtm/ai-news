@@ -6,7 +6,9 @@ databases:
     user: ai_news
 
 services:
-  # Web UI — sources/articles/digests/chat pages.
+  # Web UI (sources/articles/digests/chat) + the /internal/run-daily trigger
+  # a free external cron service calls once a day — Render's own Cron Job
+  # service has no free tier, so there's no separate cron service here.
   - name: ai-news-web
     type: web
     runtime: docker
@@ -52,43 +54,5 @@ services:
         sync: false
       - key: BASIC_AUTH_PASSWORD
         sync: false
-
-  # Daily pipeline — fetch, curate, summarize, embed, build digest, email it.
-  # Same image as the web service, different command and schedule.
-  - name: ai-news-daily
-    type: cron
-    runtime: docker
-    dockerfilePath: ./docker/Dockerfile
-    dockerContext: .
-    dockerCommand: python -m apps.pipeline.run_daily
-    schedule: "0 5 * * *" # 05:00 UTC = 08:00 Riyadh
-    plan: free
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: ai-news-db
-          property: connectionString
-      - key: LLM_PROVIDER
-        value: gemini
-      - key: EMBEDDING_PROVIDER
-        value: gemini
-      - key: EMBEDDING_DIM
-        value: "768"
-      - key: GEMINI_MODEL
-        value: gemini-3.6-flash
-      - key: GEMINI_EMBEDDING_MODEL
-        value: gemini-embedding-001
-      - key: LLM_DAILY_CALL_BUDGET
-        value: "15"
-      - key: EMAIL_PROVIDER
-        value: brevo
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: BREVO_SMTP_LOGIN
-        sync: false
-      - key: BREVO_SMTP_KEY
-        sync: false
-      - key: BREVO_SENDER_EMAIL
-        sync: false
-      - key: DIGEST_RECIPIENT_EMAIL
+      - key: RUN_DAILY_TOKEN
         sync: false
