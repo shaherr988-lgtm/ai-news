@@ -19,11 +19,11 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
     substitute for real auth in a multi-user deployment."""
 
     async def dispatch(self, request: Request, call_next):
-        # A free external cron service triggers this route daily and can't
-        # easily send Basic Auth credentials — RUN_DAILY_TOKEN in the query
-        # string is that route's own auth mechanism instead (see
-        # apps/web/routers/internal.py).
-        if request.url.path == "/internal/run-daily":
+        # A free external cron service triggers /internal/run-daily daily and
+        # can't easily send Basic Auth credentials — RUN_DAILY_TOKEN in the
+        # query string is every /internal/* route's own auth mechanism
+        # instead (see apps/web/routers/internal.py).
+        if request.url.path.startswith("/internal/"):
             return await call_next(request)
 
         settings = get_settings()
