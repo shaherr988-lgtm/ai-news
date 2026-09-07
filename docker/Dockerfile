@@ -9,10 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml ./
 COPY apps ./apps
 COPY scripts ./scripts
+COPY docker/start.sh ./start.sh
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir . && chmod +x ./start.sh
 
-# Default: run the web app (Render sets $PORT; falls back to 8000 locally).
-# Override the command on the Render Cron Job to:
-#   python -m apps.pipeline.run_daily
-CMD ["sh", "-c", "uvicorn apps.web.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Default: create tables (idempotent) then run the web app. Render sets
+# $PORT; falls back to 8000 locally.
+CMD ["./start.sh"]

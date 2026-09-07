@@ -14,12 +14,11 @@ services:
     runtime: docker
     dockerfilePath: ./docker/Dockerfile
     dockerContext: .
-    # Idempotent: creates the pgvector extension + tables if they don't exist
-    # yet, every time the service starts — cheap, and means no manual "run
-    # create_tables once" step against the Render Postgres instance.
-    dockerCommand: >-
-      sh -c "python -m scripts.create_tables &&
-      uvicorn apps.web.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+    # No dockerCommand override here on purpose: the Dockerfile's own CMD
+    # (./docker/start.sh) already creates tables/extension (idempotent) then
+    # starts uvicorn. An earlier inline `sh -c "... && ..."` dockerCommand
+    # string here got mangled by Render's parsing of the quotes/&&, causing
+    # the whole line to be treated as one unrecognized command (exit 127).
     plan: free
     envVars:
       - key: DATABASE_URL
