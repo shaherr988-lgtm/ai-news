@@ -86,8 +86,12 @@ class BrevoAPISender(EmailSender):
     def __init__(self, api_key: str, sender_email: str):
         if not api_key or not sender_email:
             raise ValueError("BREVO_API_KEY and BREVO_SENDER_EMAIL are both required")
-        self._api_key = api_key
-        self._sender_email = sender_email
+        # .strip(): a trailing newline pasted into a dashboard's env var field
+        # (as happened here) makes `requests` reject the api-key header with
+        # InvalidHeader — silently trimming it is more robust than relying on
+        # every future paste being clean.
+        self._api_key = api_key.strip()
+        self._sender_email = sender_email.strip()
 
     def send(self, *, to: str, subject: str, html_body: str) -> None:
         recipients = [{"email": address.strip()} for address in to.split(",") if address.strip()]
