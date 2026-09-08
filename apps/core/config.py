@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
 
     # Email — "gmail", "outlook" (Microsoft 365 org accounts only), or
-    # "brevo" (recommended for personal accounts — see BrevoSMTPSender).
+    # "brevo" (recommended for personal accounts — see BrevoAPISender).
     email_provider: str = "gmail"
     gmail_address: str | None = None
     gmail_app_password: str | None = None
