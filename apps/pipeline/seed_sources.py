@@ -30,7 +30,8 @@ SEED_ARXIV_CATEGORIES = [
 ]
 
 
-def seed() -> None:
+def seed() -> int:
+    """Returns how many sources were newly added (0 if all were already present)."""
     db = SessionLocal()
     try:
         existing_names = {name for (name,) in db.query(Source.name).all()}
@@ -73,6 +74,7 @@ def seed() -> None:
 
         db.commit()
         print(f"Seeded {added} source(s) ({len(existing_names)} already present, skipped).")
+        return added
     finally:
         db.close()
 

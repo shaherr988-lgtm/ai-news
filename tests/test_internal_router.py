@@ -101,3 +101,18 @@ def test_reset_today_digest_when_no_digest_exists(monkeypatch):
     response = _client().post("/internal/reset-today-digest", params={"token": "correct-token"})
     assert response.status_code == 200
     assert response.json() == {"status": "no digest found for today"}
+
+
+def test_seed_sources_wrong_token_returns_404(monkeypatch):
+    monkeypatch.setattr(get_settings(), "run_daily_token", "correct-token")
+    response = _client().post("/internal/seed-sources", params={"token": "wrong-token"})
+    assert response.status_code == 404
+
+
+def test_seed_sources_calls_seed_and_returns_count(monkeypatch):
+    monkeypatch.setattr(get_settings(), "run_daily_token", "correct-token")
+    with patch("apps.web.routers.internal.seed_sources", return_value=8) as mock_seed:
+        response = _client().post("/internal/seed-sources", params={"token": "correct-token"})
+        assert response.status_code == 200
+        assert response.json() == {"status": "seeded", "added": 8}
+        mock_seed.assert_called_once_with()

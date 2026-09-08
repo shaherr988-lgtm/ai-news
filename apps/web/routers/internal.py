@@ -16,6 +16,7 @@ from apps.core.config import get_settings
 from apps.core.db import SessionLocal
 from apps.models.digest import DailyDigest
 from apps.pipeline.run_daily import main as run_daily_main
+from apps.pipeline.seed_sources import seed as seed_sources
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,18 @@ def reset_today_digest(token: str = Query(...)):
         return {"status": "reset"}
     finally:
         db.close()
+
+
+@router.post("/seed-sources")
+def trigger_seed_sources(token: str = Query(...)):
+    """Inserts the starter set of sources (YouTube channels, blogs, arXiv
+    categories) — needed once against a fresh database like Render's, which
+    starts with zero sources even though a local dev DB may already have
+    them seeded. Safe to call repeatedly: seed_sources.seed() skips any
+    source whose name already exists."""
+    _require_valid_token(token)
+    added = seed_sources()
+    return {"status": "seeded", "added": added}
 
 
 def _run_safely() -> None:
