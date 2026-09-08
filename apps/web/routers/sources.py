@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from apps.core.enums import SourceType
 from apps.models.source import Source
-from apps.web.deps import get_db
+from apps.core.db import get_db
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 templates = Jinja2Templates(directory="apps/web/templates")

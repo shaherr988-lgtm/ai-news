@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from apps.models.article import Article
 from apps.models.source import Source
-from apps.web.deps import get_db
+from apps.core.db import get_db
 
 router = APIRouter(prefix="/articles", tags=["articles"])
 templates = Jinja2Templates(directory="apps/web/templates")

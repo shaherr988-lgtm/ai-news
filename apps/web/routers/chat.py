@@ -8,7 +8,7 @@ from apps.agent.factory import get_llm_provider
 from apps.core.config import get_settings
 from apps.rag.prompts import RAG_SYSTEM_PROMPT, build_rag_prompt
 from apps.rag.retrieval import retrieve_top_k
-from apps.web.deps import get_db
+from apps.core.db import get_db
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 templates = Jinja2Templates(directory="apps/web/templates")

@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+psycopg2://ai_news:ai_news@localhost:5432/ai_news"
 
-    # LLM provider selection (generation) — "openai" | "anthropic" | "gemini"
+    # LLM provider selection (generation) — "openai" | "anthropic" | "gemini" | "deepseek"
     llm_provider: str = "openai"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"

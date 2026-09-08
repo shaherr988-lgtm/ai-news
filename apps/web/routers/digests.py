@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from apps.models.digest import DailyDigest
-from apps.web.deps import get_db
+from apps.core.db import get_db
 
 router = APIRouter(prefix="/digests", tags=["digests"])
 templates = Jinja2Templates(directory="apps/web/templates")

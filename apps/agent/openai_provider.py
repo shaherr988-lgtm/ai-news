@@ -4,10 +4,10 @@ from apps.agent.base import LLMProvider
 
 
 class OpenAIProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini", base_url: str | None = None):
         if not api_key:
             raise ValueError("OPENAI_API_KEY is required to use the OpenAI provider")
-        self._client = OpenAI(api_key=api_key)
+        self._client = OpenAI(api_key=api_key, base_url=base_url)
         self._model = model
 
     def _chat(self, system_prompt: str, user_prompt: str, max_tokens: int) -> str:
