@@ -1,10 +1,12 @@
-"""Email-sending abstraction. Gmail or Outlook SMTP today; swap in
-SendGrid/Mailgun later by adding another EmailSender subclass and a branch
-in get_email_sender()."""
+"""Email-sending abstraction. Gmail or Outlook SMTP, or Brevo over its HTTPS
+API; swap in another provider later by adding an EmailSender subclass and a
+branch in get_email_sender()."""
 
 import smtplib
 from abc import ABC, abstractmethod
 from email.message import EmailMessage
+
+import requests
 
 from apps.core.config import Settings, get_settings
 
@@ -67,29 +69,45 @@ class OutlookSMTPSender(EmailSender):
         )
 
 
-class BrevoSMTPSender(EmailSender):
+class BrevoAPISender(EmailSender):
     """Brevo (formerly Sendinblue) — a dedicated transactional email service,
-    free tier 300 emails/day. No personal-account SMTP restrictions like
-    Gmail/Outlook impose, since it's a business email-sending product. The
-    SMTP login and key come from the Brevo dashboard (Settings -> SMTP & API
-    -> SMTP), not your regular account password. `sender_email` must be a
-    verified sender in Brevo (Senders, Domains & Dedicated IPs)."""
+    free tier 300 emails/day. Sends over Brevo's HTTPS API rather than SMTP:
+    Render (like most PaaS free tiers) blocks outbound SMTP ports (25/465/587)
+    entirely, so smtp-relay.brevo.com:587 connections there just hang and
+    time out (`TimeoutError: [Errno 110] Connection timed out`) even though
+    the exact same code works from a home/office network. HTTPS on port 443
+    isn't blocked. The API key comes from the Brevo dashboard (Settings ->
+    SMTP & API -> API keys & MCP), not the SMTP key/login pair used before.
+    `sender_email` must be a verified sender in Brevo (Senders, Domains &
+    Dedicated IPs)."""
 
-    def __init__(self, smtp_login: str, smtp_key: str, sender_email: str):
-        if not smtp_login or not smtp_key or not sender_email:
-            raise ValueError(
-                "BREVO_SMTP_LOGIN, BREVO_SMTP_KEY, and BREVO_SENDER_EMAIL are all required"
-            )
-        self._smtp_login = smtp_login
-        self._smtp_key = smtp_key
+    _ENDPOINT = "https://api.brevo.com/v3/smtp/email"
+
+    def __init__(self, api_key: str, sender_email: str):
+        if not api_key or not sender_email:
+            raise ValueError("BREVO_API_KEY and BREVO_SENDER_EMAIL are both required")
+        self._api_key = api_key
         self._sender_email = sender_email
 
     def send(self, *, to: str, subject: str, html_body: str) -> None:
-        message = _build_message(address=self._sender_email, to=to, subject=subject, html_body=html_body)
-        _send_via_starttls(
-            host="smtp-relay.brevo.com", port=587, login=self._smtp_login, password=self._smtp_key,
-            message=message,
+        recipients = [{"email": address.strip()} for address in to.split(",") if address.strip()]
+        response = requests.post(
+            self._ENDPOINT,
+            headers={
+                "accept": "application/json",
+                "content-type": "application/json",
+                "api-key": self._api_key,
+            },
+            json={
+                "sender": {"email": self._sender_email},
+                "to": recipients,
+                "subject": subject,
+                "htmlContent": html_body,
+            },
+            timeout=30,
         )
+        if response.status_code >= 400:
+            raise RuntimeError(f"Brevo API send failed ({response.status_code}): {response.text}")
 
 
 def get_email_sender(settings: Settings | None = None) -> EmailSender:
@@ -103,9 +121,7 @@ def get_email_sender(settings: Settings | None = None) -> EmailSender:
         return OutlookSMTPSender(settings.outlook_address or "", settings.outlook_app_password or "")
 
     if provider == "brevo":
-        return BrevoSMTPSender(
-            settings.brevo_smtp_login or "", settings.brevo_smtp_key or "", settings.brevo_sender_email or ""
-        )
+        return BrevoAPISender(settings.brevo_api_key or "", settings.brevo_sender_email or "")
 
     raise ValueError(
         f"Unknown EMAIL_PROVIDER: {settings.email_provider!r} (expected 'gmail', 'outlook', or 'brevo')"

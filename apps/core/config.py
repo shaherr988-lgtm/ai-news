@@ -54,11 +54,12 @@ class Settings(BaseSettings):
     gmail_app_password: str | None = None
     outlook_address: str | None = None
     outlook_app_password: str | None = None
-    # "brevo" — a dedicated transactional email service (free tier: 300/day).
-    # No personal-account SMTP restrictions like Gmail/Outlook have.
-    # SMTP login + key come from the Brevo dashboard (Settings -> SMTP & API).
-    brevo_smtp_login: str | None = None
-    brevo_smtp_key: str | None = None
+    # "brevo" — a dedicated transactional email service (free tier: 300/day),
+    # sent over its HTTPS API rather than SMTP (see BrevoAPISender in
+    # apps/pipeline/mailer.py for why: PaaS free tiers like Render block
+    # outbound SMTP ports). The API key comes from the Brevo dashboard
+    # (Settings -> SMTP & API -> API keys & MCP), not the SMTP login/key pair.
+    brevo_api_key: str | None = None
     brevo_sender_email: str | None = None
     digest_recipient_email: str | None = None
 
