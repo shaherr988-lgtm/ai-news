@@ -23,6 +23,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/internal", tags=["internal"])
 
 
+@router.get("/ping")
+def ping():
+    """No-op health check, unauthenticated on purpose: a free external
+    keep-alive service (cron-job.org) hits this every ~10 minutes so Render's
+    free-tier instance never fully spins down from inactivity, which
+    otherwise made the real daily trigger race a slow cold-start response.
+    GET (not POST) since most uptime pingers default to GET."""
+    return {"status": "ok"}
+
+
 def _require_valid_token(token: str) -> None:
     settings = get_settings()
     if not settings.run_daily_token or not secrets.compare_digest(token, settings.run_daily_token):

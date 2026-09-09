@@ -29,6 +29,21 @@ def _sqlite_session_factory():
     return sessionmaker(bind=engine, future=True)
 
 
+def test_ping_requires_no_token_or_auth():
+    response = _client().get("/internal/ping")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_ping_bypasses_basic_auth(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "basic_auth_username", "user")
+    monkeypatch.setattr(settings, "basic_auth_password", "pass")
+    # No Authorization header sent — would 401 on any Basic-Auth-protected route.
+    response = _client().get("/internal/ping")
+    assert response.status_code == 200
+
+
 def test_wrong_token_returns_404(monkeypatch):
     monkeypatch.setattr(get_settings(), "run_daily_token", "correct-token")
     response = _client().post("/internal/run-daily", params={"token": "wrong-token"})
