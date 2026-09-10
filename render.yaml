@@ -1,10 +1,3 @@
-databases:
-  - name: ai-news-db
-    plan: free
-    postgresMajorVersion: "16"
-    databaseName: ai_news
-    user: ai_news
-
 services:
   # Web UI (sources/articles/digests/chat) + the /internal/run-daily trigger
   # a free external cron service calls once a day — Render's own Cron Job
@@ -21,10 +14,11 @@ services:
     # the whole line to be treated as one unrecognized command (exit 127).
     plan: free
     envVars:
+      # Neon (free, no expiration) instead of Render's own Postgres, which
+      # deletes free databases 30+14 days after creation. Set manually in
+      # Render's dashboard to the Neon project's connection string.
       - key: DATABASE_URL
-        fromDatabase:
-          name: ai-news-db
-          property: connectionString
+        sync: false
       - key: LLM_PROVIDER
         value: gemini
       - key: EMBEDDING_PROVIDER
