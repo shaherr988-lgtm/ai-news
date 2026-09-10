@@ -1,0 +1,28 @@
+name: Daily digest trigger
+
+# Runs once a day (07:00 UTC = 10:00 Asia/Riyadh, matching the cron-job.org
+# schedule this backs up). GitHub Actions is free and unlimited for public
+# repos, so this needs no third-party account. RUN_DAILY_TOKEN must be added
+# as a repository secret (Settings -> Secrets and variables -> Actions) —
+# never hardcoded here, since this repo is public.
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the Render free-tier instance
+        # Render's free tier sleeps after ~15 min idle and can take up to
+        # 50s+ to wake — retry a lightweight, unauthenticated ping until it
+        # responds instead of racing the real trigger against a cold start.
+        run: |
+          curl --retry 6 --retry-delay 15 --retry-all-errors --max-time 30 -sS \
+            "https://ai-news-web-qon6.onrender.com/internal/ping"
+
+      - name: Trigger the daily pipeline
+        run: |
+          curl -sS -X POST \
+            "https://ai-news-web-qon6.onrender.com/internal/run-daily?token=${{ secrets.RUN_DAILY_TOKEN }}"
