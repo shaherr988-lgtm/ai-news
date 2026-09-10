@@ -23,6 +23,13 @@ jobs:
             "https://ai-news-web-qon6.onrender.com/internal/ping"
 
       - name: Trigger the daily pipeline
+        env:
+          RUN_DAILY_TOKEN: ${{ secrets.RUN_DAILY_TOKEN }}
         run: |
+          # A trailing newline pasted into the GitHub secret's value breaks
+          # curl's URL parser ("URL rejected: Malformed input to a URL
+          # function") — the same class of bug hit with the Brevo API key.
+          # Trim whitespace defensively instead of relying on a clean paste.
+          TOKEN=$(printf '%s' "$RUN_DAILY_TOKEN" | tr -d '[:space:]')
           curl -sS -X POST \
-            "https://ai-news-web-qon6.onrender.com/internal/run-daily?token=${{ secrets.RUN_DAILY_TOKEN }}"
+            "https://ai-news-web-qon6.onrender.com/internal/run-daily?token=${TOKEN}"
