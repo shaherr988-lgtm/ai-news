@@ -48,7 +48,9 @@ _FETCHER_MODULES = {
 }
 
 
-def _fetch_new_articles(db, today_start: datetime, provider: LLMProvider, budget: CallBudget) -> int:
+def _fetch_new_articles(
+    db, today_start: datetime, provider: LLMProvider, budget: CallBudget, max_articles_per_day: int
+) -> int:
     """Step A. Returns the number of new articles inserted.
 
     Each source is fetched "since it was last fetched" (source.last_fetched_at),
@@ -64,14 +66,25 @@ def _fetch_new_articles(db, today_start: datetime, provider: LLMProvider, budget
     the rest are simply not inserted; they were never new content the user
     couldn't also find by visiting the source directly.
 
+    `max_articles_per_day` is a hard ceiling across ALL sources combined (not
+    just per-source) — e.g. a fresh/re-seeded database where every source
+    backfills its whole history in one run. Once reached, remaining sources
+    for this run are skipped entirely (they're picked up again next run,
+    since last_fetched_at is only advanced for sources actually processed).
+
     Commits once per source (not once for the whole batch): a bad row from one
     source (a too-long title, a blank url) must not roll back — and therefore
     drop — every other source's fresh articles for the day.
     """
     sources = db.query(Source).filter_by(is_active=True).all()
     inserted = 0
+    remaining_daily_slots = max_articles_per_day
 
     for source in sources:
+        if remaining_daily_slots <= 0:
+            logger.info("Daily article cap (%d) reached — skipping remaining sources this run", max_articles_per_day)
+            break
+
         fetcher_module = _FETCHER_MODULES.get(source.source_type)
         if fetcher_module is None:
             logger.warning("No fetcher for source_type=%s (source id=%s)", source.source_type, source.id)
@@ -89,8 +102,9 @@ def _fetch_new_articles(db, today_start: datetime, provider: LLMProvider, budget
             raw_items, existing_external_ids=existing_external_ids, existing_urls=existing_urls
         )
 
-        if len(new_items) > curate.MAX_ITEMS_PER_SOURCE:
-            new_items = curate.select_most_important(provider, new_items, budget=budget)
+        per_source_cap = min(curate.MAX_ITEMS_PER_SOURCE, remaining_daily_slots)
+        if len(new_items) > per_source_cap:
+            new_items = curate.select_most_important(provider, new_items, keep=per_source_cap, budget=budget)
 
         for item in new_items:
             article = dedup.to_article(source, item)
@@ -116,6 +130,7 @@ def _fetch_new_articles(db, today_start: datetime, provider: LLMProvider, budget
             continue
 
         inserted += len(new_items)
+        remaining_daily_slots -= len(new_items)
 
     logger.info("Step A: fetched %d new article(s) from %d active source(s)", inserted, len(sources))
     return inserted
@@ -143,7 +158,7 @@ def main(dry_run: bool = False) -> None:
         budget = CallBudget(settings.llm_daily_call_budget)
 
         # Step A — fetch new content from every active source.
-        _fetch_new_articles(db, today_start, provider, budget)
+        _fetch_new_articles(db, today_start, provider, budget, settings.max_articles_per_day)
 
         # Step B — summarize any article that doesn't have a summary yet.
         unsummarized = db.query(Article).filter(Article.summary.is_(None)).all()

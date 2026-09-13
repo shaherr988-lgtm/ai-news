@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     # generously (e.g. 1000) for a paid provider with no such cap.
     llm_daily_call_budget: int = 1000
 
+    # Hard cap on total new articles inserted per run_daily invocation, across
+    # all sources combined — a fixed ceiling the pipeline never exceeds on its
+    # own (e.g. a fresh/re-seeded database backfilling every source's history
+    # at once). Only raising this value (a deliberate operator decision, not
+    # something the code decides at runtime) allows more through on a given day.
+    max_articles_per_day: int = 15
+
     # Embedding provider selection (RAG) — "openai" or "gemini".
     # NOTE: required even when llm_provider="anthropic" — Anthropic has no
     # native text-embeddings endpoint. embedding_dim MUST match whatever
