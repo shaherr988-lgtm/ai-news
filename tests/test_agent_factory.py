@@ -1,7 +1,9 @@
 import pytest
 
 from apps.agent.anthropic_provider import AnthropicProvider
+from apps.agent.deepseek_provider import DeepSeekProvider
 from apps.agent.factory import get_llm_provider
+from apps.agent.fallback_provider import FallbackLLMProvider
 from apps.agent.gemini_provider import GeminiProvider
 from apps.agent.openai_provider import OpenAIProvider
 from apps.core.config import Settings
@@ -41,3 +43,23 @@ def test_missing_gemini_api_key_raises():
     settings = Settings(llm_provider="gemini", gemini_api_key=None)
     with pytest.raises(ValueError):
         get_llm_provider(settings)
+
+
+def test_no_fallback_configured_returns_primary_directly():
+    settings = Settings(llm_provider="gemini", gemini_api_key="test-key")
+    provider = get_llm_provider(settings)
+    assert isinstance(provider, GeminiProvider)
+    assert not isinstance(provider, FallbackLLMProvider)
+
+
+def test_fallback_provider_wraps_primary_when_configured():
+    settings = Settings(
+        llm_provider="gemini",
+        gemini_api_key="test-key",
+        llm_fallback_provider="deepseek",
+        deepseek_api_key="test-key",
+    )
+    provider = get_llm_provider(settings)
+    assert isinstance(provider, FallbackLLMProvider)
+    assert isinstance(provider._primary, GeminiProvider)
+    assert isinstance(provider._fallback, DeepSeekProvider)

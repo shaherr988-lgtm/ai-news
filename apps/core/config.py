@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     deepseek_api_key: str | None = None
     deepseek_model: str = "deepseek-chat"
 
+    # Optional second provider to retry on when the primary's call raises
+    # (rate limit, momentary outage) — same value set as llm_provider. Needs
+    # that provider's own API key configured too. Unset by default: no
+    # fallback, matching today's single-provider behavior.
+    llm_fallback_provider: str | None = None
+
     # Safety ceiling on LLM generate/summarize calls per run_daily invocation —
     # matters mainly for Gemini's free tier (20 generate_content calls/day
     # total). One call is always reserved for the final digest build; set
