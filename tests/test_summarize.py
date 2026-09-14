@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from apps.agent.base import LLMProvider
 from apps.models.article import Article
@@ -51,3 +51,36 @@ def test_zero_budget_summarizes_nothing():
 
     assert summarized == 0
     assert articles[0].summary is None
+
+
+def test_no_delay_by_default():
+    db = MagicMock()
+    articles = [_article("A"), _article("B")]
+
+    with patch("apps.pipeline.summarize.time.sleep") as mock_sleep:
+        summarize_articles(db, FakeProvider(), articles)
+
+    mock_sleep.assert_not_called()
+
+
+def test_sleeps_before_each_call_when_delay_configured():
+    db = MagicMock()
+    articles = [_article("A"), _article("B"), _article("C")]
+
+    with patch("apps.pipeline.summarize.time.sleep") as mock_sleep:
+        summarize_articles(db, FakeProvider(), articles, request_delay_seconds=30)
+
+    assert mock_sleep.call_count == 3
+    mock_sleep.assert_called_with(30)
+
+
+def test_no_sleep_for_articles_skipped_by_exhausted_budget():
+    db = MagicMock()
+    articles = [_article("A"), _article("B"), _article("C")]
+    budget = CallBudget(total=1, reserved_for_digest=0)
+
+    with patch("apps.pipeline.summarize.time.sleep") as mock_sleep:
+        summarize_articles(db, FakeProvider(), articles, budget=budget, request_delay_seconds=30)
+
+    # Only the one article actually summarized before budget ran out sleeps.
+    assert mock_sleep.call_count == 1

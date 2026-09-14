@@ -1,6 +1,7 @@
 """Step C: assemble the final daily digest HTML from today's summarized articles."""
 
 import logging
+import time
 from collections import defaultdict
 
 import bleach
@@ -50,7 +51,11 @@ def _deterministic_digest(articles: list[Article]) -> str:
 
 
 def build_digest(
-    provider: LLMProvider, articles: list[Article], *, budget: CallBudget | None = None
+    provider: LLMProvider,
+    articles: list[Article],
+    *,
+    budget: CallBudget | None = None,
+    request_delay_seconds: float = 0,
 ) -> str:
     """Return the digest body as sanitized HTML, ready to store in
     DailyDigest.summary_text and to send as the email body.
@@ -60,6 +65,10 @@ def build_digest(
     (rate limit, network error, ...) — a whole day's fetching, curating, and
     summarizing must never be thrown away just because the very last call
     failed.
+
+    `request_delay_seconds`: paused before the call to stay under the
+    provider's per-minute rate limit — see llm_request_delay_seconds in
+    apps/core/config.py.
     """
     if not articles:
         return "<p>لا توجد أخبار جديدة اليوم.</p>"
@@ -67,6 +76,9 @@ def build_digest(
     if budget is not None and not budget.spend_for_digest():
         logger.warning("LLM call budget exhausted — using plain digest instead of AI-written one")
         return sanitize_digest_html(_deterministic_digest(articles))
+
+    if request_delay_seconds:
+        time.sleep(request_delay_seconds)
 
     grouped = group_by_source(articles)
     prompt = build_digest_prompt(grouped)

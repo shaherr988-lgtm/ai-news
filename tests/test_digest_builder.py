@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from apps.agent.base import LLMProvider
 from apps.core.enums import SourceType
@@ -98,3 +99,37 @@ def test_build_digest_falls_back_to_plain_digest_when_llm_call_fails():
 
     assert "https://a.example/1" in result
     assert "A1" in result
+
+
+def test_no_delay_by_default():
+    source = Source(name="Source A", source_type=SourceType.BLOG, url="https://a.example")
+    articles = [_article(source, "A1", "https://a.example/1")]
+
+    with patch("apps.pipeline.digest_builder.time.sleep") as mock_sleep:
+        build_digest(FakeProvider(), articles)
+
+    mock_sleep.assert_not_called()
+
+
+def test_sleeps_before_the_llm_call_when_delay_configured():
+    source = Source(name="Source A", source_type=SourceType.BLOG, url="https://a.example")
+    articles = [_article(source, "A1", "https://a.example/1")]
+
+    with patch("apps.pipeline.digest_builder.time.sleep") as mock_sleep:
+        build_digest(FakeProvider(), articles, request_delay_seconds=30)
+
+    mock_sleep.assert_called_once_with(30)
+
+
+def test_no_sleep_when_no_articles_or_budget_exhausted():
+    provider = FakeProvider()
+    budget = CallBudget(total=0)
+
+    with patch("apps.pipeline.digest_builder.time.sleep") as mock_sleep:
+        build_digest(provider, [], request_delay_seconds=30)
+        source = Source(name="Source A", source_type=SourceType.BLOG, url="https://a.example")
+        build_digest(
+            provider, [_article(source, "A1", "https://a.example/1")], budget=budget, request_delay_seconds=30
+        )
+
+    mock_sleep.assert_not_called()

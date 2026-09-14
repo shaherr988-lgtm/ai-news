@@ -13,6 +13,7 @@ digest) — the user can still visit the source directly for anything skipped.
 
 import logging
 import re
+import time
 
 from apps.agent.base import LLMProvider
 from apps.pipeline.call_budget import CallBudget
@@ -44,18 +45,26 @@ def select_most_important(
     *,
     keep: int = MAX_ITEMS_PER_SOURCE,
     budget: CallBudget | None = None,
+    request_delay_seconds: float = 0,
 ) -> list[FetchedItem]:
     """Return at most `keep` items, chosen by the LLM as the most important.
     Falls back to the first `keep` items (original feed order) if the model's
     response can't be parsed into enough valid indices, or if `budget` is
     given and has no calls left (e.g. Gemini's free-tier daily cap) — the
-    fetch/dedup work already done isn't worth losing over a ranking call."""
+    fetch/dedup work already done isn't worth losing over a ranking call.
+
+    `request_delay_seconds`: paused before the call to stay under the
+    provider's per-minute rate limit — see llm_request_delay_seconds in
+    apps/core/config.py."""
     if len(items) <= keep:
         return items
 
     if budget is not None and not budget.spend():
         logger.info("LLM call budget exhausted — curating by feed order instead of ranking")
         return items[:keep]
+
+    if request_delay_seconds:
+        time.sleep(request_delay_seconds)
 
     try:
         response = provider.generate(CURATION_SYSTEM_PROMPT, _build_prompt(items, keep), max_tokens=200)

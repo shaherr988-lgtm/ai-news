@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from apps.pipeline.call_budget import CallBudget
 from apps.pipeline.curate import select_most_important
@@ -75,3 +75,35 @@ def test_skips_llm_call_when_budget_is_exhausted():
 
     assert [item.title for item in result] == ["Title 1", "Title 2"]
     provider.generate.assert_not_called()
+
+
+def test_no_delay_by_default():
+    provider = MagicMock()
+    provider.generate.return_value = "1, 2"
+    items = [_item(i) for i in range(1, 6)]
+
+    with patch("apps.pipeline.curate.time.sleep") as mock_sleep:
+        select_most_important(provider, items, keep=2)
+
+    mock_sleep.assert_not_called()
+
+
+def test_sleeps_before_the_llm_call_when_delay_configured():
+    provider = MagicMock()
+    provider.generate.return_value = "1, 2"
+    items = [_item(i) for i in range(1, 6)]
+
+    with patch("apps.pipeline.curate.time.sleep") as mock_sleep:
+        select_most_important(provider, items, keep=2, request_delay_seconds=30)
+
+    mock_sleep.assert_called_once_with(30)
+
+
+def test_no_sleep_when_under_the_limit_and_no_llm_call_needed():
+    provider = MagicMock()
+    items = [_item(i) for i in range(5)]
+
+    with patch("apps.pipeline.curate.time.sleep") as mock_sleep:
+        select_most_important(provider, items, keep=10, request_delay_seconds=30)
+
+    mock_sleep.assert_not_called()

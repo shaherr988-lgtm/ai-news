@@ -49,7 +49,12 @@ _FETCHER_MODULES = {
 
 
 def _fetch_new_articles(
-    db, today_start: datetime, provider: LLMProvider, budget: CallBudget, max_articles_per_day: int
+    db,
+    today_start: datetime,
+    provider: LLMProvider,
+    budget: CallBudget,
+    max_articles_per_day: int,
+    request_delay_seconds: float = 0,
 ) -> int:
     """Step A. Returns the number of new articles inserted.
 
@@ -104,7 +109,9 @@ def _fetch_new_articles(
 
         per_source_cap = min(curate.MAX_ITEMS_PER_SOURCE, remaining_daily_slots)
         if len(new_items) > per_source_cap:
-            new_items = curate.select_most_important(provider, new_items, keep=per_source_cap, budget=budget)
+            new_items = curate.select_most_important(
+                provider, new_items, keep=per_source_cap, budget=budget, request_delay_seconds=request_delay_seconds
+            )
 
         for item in new_items:
             article = dedup.to_article(source, item)
@@ -158,11 +165,20 @@ def main(dry_run: bool = False) -> None:
         budget = CallBudget(settings.llm_daily_call_budget)
 
         # Step A — fetch new content from every active source.
-        _fetch_new_articles(db, today_start, provider, budget, settings.max_articles_per_day)
+        _fetch_new_articles(
+            db,
+            today_start,
+            provider,
+            budget,
+            settings.max_articles_per_day,
+            request_delay_seconds=settings.llm_request_delay_seconds,
+        )
 
         # Step B — summarize any article that doesn't have a summary yet.
         unsummarized = db.query(Article).filter(Article.summary.is_(None)).all()
-        summarized_count = summarize_articles(db, provider, unsummarized, budget=budget)
+        summarized_count = summarize_articles(
+            db, provider, unsummarized, budget=budget, request_delay_seconds=settings.llm_request_delay_seconds
+        )
         logger.info("Step B: summarized %d article(s)", summarized_count)
 
         # Step E — chunk + embed any article that hasn't been embedded yet,
@@ -187,7 +203,9 @@ def main(dry_run: bool = False) -> None:
             .filter(Article.published_at >= today_start)
             .all()
         )
-        digest_html = build_digest(provider, todays_articles, budget=budget)
+        digest_html = build_digest(
+            provider, todays_articles, budget=budget, request_delay_seconds=settings.llm_request_delay_seconds
+        )
 
         digest_row = existing_digest or DailyDigest(digest_date=today)
         digest_row.summary_text = digest_html

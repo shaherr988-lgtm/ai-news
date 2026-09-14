@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     # generously (e.g. 1000) for a paid provider with no such cap.
     llm_daily_call_budget: int = 1000
 
+    # Pause before each LLM call (summarize/curate/digest-build) to stay
+    # under the primary provider's per-minute rate limit, not just its daily
+    # cap — Gemini's free tier allows roughly 15 requests/minute for
+    # gemini-3.6-flash, and a burst of back-to-back calls (e.g. summarizing
+    # many articles fetched at once, such as a freshly re-seeded database
+    # backfilling every source's history) can exceed that within seconds
+    # even while nowhere near the daily budget. Confirmed as the likely
+    # cause of transient digest-build failures on 2026-09-10/11/12.
+    llm_request_delay_seconds: float = 30.0
+
     # Hard cap on total new articles inserted per run_daily invocation, across
     # all sources combined — a fixed ceiling the pipeline never exceeds on its
     # own (e.g. a fresh/re-seeded database backfilling every source's history

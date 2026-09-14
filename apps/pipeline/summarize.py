@@ -1,6 +1,7 @@
 """Step B: generate a per-item summary for every Article that doesn't have one yet."""
 
 import logging
+import time
 
 from sqlalchemy.orm import Session
 
@@ -13,7 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 def summarize_articles(
-    db: Session, provider: LLMProvider, articles: list[Article], *, budget: CallBudget | None = None
+    db: Session,
+    provider: LLMProvider,
+    articles: list[Article],
+    *,
+    budget: CallBudget | None = None,
+    request_delay_seconds: float = 0,
 ) -> int:
     """Summarize each article in place and commit. Returns the number summarized.
 
@@ -23,6 +29,10 @@ def summarize_articles(
     than raising — the remaining articles just show their title instead of a
     summary in today's digest (see agent/prompts.build_digest_prompt), and get
     retried whenever a future run has budget again.
+
+    `request_delay_seconds`: paused before each call (not just the first) to
+    stay under the provider's per-minute rate limit — see llm_request_delay_seconds
+    in apps/core/config.py for why a daily budget alone isn't enough.
     """
     summarized = 0
     for article in articles:
@@ -32,6 +42,8 @@ def summarize_articles(
                 len(articles) - summarized,
             )
             break
+        if request_delay_seconds:
+            time.sleep(request_delay_seconds)
         try:
             prompt = build_item_summary_prompt(article.title, article.content or "")
             article.summary = provider.summarize(INSIGHTS_SYSTEM_PROMPT, prompt)
