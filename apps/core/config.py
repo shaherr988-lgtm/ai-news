@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     # backfilling every source's history) can exceed that within seconds
     # even while nowhere near the daily budget. Confirmed as the likely
     # cause of transient digest-build failures on 2026-09-10/11/12.
-    llm_request_delay_seconds: float = 30.0
+    llm_request_delay_seconds: float = 20.0
 
     # Hard cap on total new articles inserted per run_daily invocation, across
     # all sources combined — a fixed ceiling the pipeline never exceeds on its
