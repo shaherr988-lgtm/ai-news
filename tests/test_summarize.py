@@ -26,7 +26,37 @@ def test_summarizes_every_article_when_no_budget_given():
 
     assert summarized == 3
     assert all(a.summary is not None for a in articles)
-    db.commit.assert_called_once()
+    assert db.commit.call_count == 3
+
+
+class FlakyProvider(LLMProvider):
+    """Fails on the 2nd article only — for interrupted-run tests."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def summarize(self, system_prompt: str, content: str, *, max_tokens: int = 300) -> str:
+        self.calls += 1
+        if self.calls == 2:
+            raise RuntimeError("simulated interruption")
+        return f"summary of: {content[:20]}"
+
+    def generate(self, system_prompt: str, user_prompt: str, *, max_tokens: int = 2000) -> str:
+        raise NotImplementedError
+
+
+def test_earlier_progress_survives_a_later_failure():
+    db = MagicMock()
+    articles = [_article("A"), _article("B"), _article("C")]
+
+    summarized = summarize_articles(db, FlakyProvider(), articles)
+
+    assert summarized == 2
+    assert articles[0].summary is not None  # committed before the failure
+    assert articles[1].summary is None  # failed, left for next run
+    assert articles[2].summary is not None  # continued after the failure
+    assert db.commit.call_count == 2
+    db.rollback.assert_called_once()
 
 
 def test_stops_early_once_budget_is_exhausted():

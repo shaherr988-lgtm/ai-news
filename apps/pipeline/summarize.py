@@ -21,7 +21,15 @@ def summarize_articles(
     budget: CallBudget | None = None,
     request_delay_seconds: float = 0,
 ) -> int:
-    """Summarize each article in place and commit. Returns the number summarized.
+    """Summarize each article in place, committing after every one. Returns
+    the number summarized.
+
+    Commits per-article (not once at the end) so a run interrupted partway
+    through — a dropped DB connection, a killed background task — keeps
+    whatever it already finished instead of losing all of it. A whole batch
+    committed only at the end meant an interrupted run retried every article
+    from scratch next time, burning more of Gemini's shared daily quota for
+    no progress each time (confirmed cause of the 2026-09-15/16 outage).
 
     Failures on individual items are logged and skipped (left unsummarized for
     the next run) rather than aborting the whole batch. If `budget` is given
@@ -47,10 +55,11 @@ def summarize_articles(
         try:
             prompt = build_item_summary_prompt(article.title, article.content or "")
             article.summary = provider.summarize(INSIGHTS_SYSTEM_PROMPT, prompt)
+            db.commit()
             summarized += 1
         except Exception:
             logger.exception("Failed to summarize article id=%s url=%s", article.id, article.url)
+            db.rollback()
             continue
 
-    db.commit()
     return summarized
