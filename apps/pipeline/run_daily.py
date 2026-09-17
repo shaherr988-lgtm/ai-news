@@ -13,6 +13,7 @@ import argparse
 import logging
 from datetime import datetime, timezone
 
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 
@@ -46,6 +47,16 @@ _FETCHER_MODULES = {
     SourceType.BLOG: fetch_blog,
     SourceType.ARXIV: fetch_arxiv,
 }
+
+# Arbitrary fixed key for a Postgres advisory lock — any bigint works, it
+# just has to be the same constant every time. Prevents two overlapping
+# run_daily() executions (e.g. two of the four redundant daily triggers
+# firing minutes apart, before the first has committed a sent digest) from
+# both fetching/summarizing the same articles at once, doubling real LLM API
+# usage for zero extra benefit and burning through Gemini's shared 20/day
+# quota twice as fast — the likely cause of the digest-build call failing on
+# 2026-09-17 despite a single run alone using well under the daily cap.
+_DAILY_RUN_LOCK_KEY = 727001
 
 
 def _fetch_new_articles(
@@ -148,93 +159,122 @@ def main(dry_run: bool = False) -> None:
     db = SessionLocal()
 
     try:
-        # UTC, not the server's local calendar day — every cutoff computed
-        # below is UTC-based, and mixing local "today" with a UTC cutoff
-        # causes digests to mislabel articles near midnight.
-        now = datetime.now(timezone.utc)
-        today = now.date()
-        today_start = utc_day_start(now)
+        # Advisory lock: with 3+ independent daily triggers (GitHub Actions,
+        # cron-job.org) that can fire minutes apart, two could otherwise both
+        # pass the "not sent yet" check below and run concurrently — each
+        # fetching/summarizing the same articles, doubling real LLM API
+        # calls for zero benefit (the likely cause of exceeding Gemini's
+        # shared 20/day quota on 2026-09-17 despite one run alone using well
+        # under it). pg_try_advisory_lock is non-blocking and per-connection:
+        # a second caller gets False immediately instead of queueing, and
+        # the lock is released explicitly below (not left to connection-pool
+        # timing) so it can't linger past this run. Postgres-only — a no-op
+        # against a non-Postgres DB (e.g. the sqlite double used in tests),
+        # where a single-process test run has no real concurrency to guard.
+        is_postgres = db.bind.dialect.name == "postgresql"
+        if is_postgres:
+            lock_acquired = db.execute(
+                text("SELECT pg_try_advisory_lock(:key)"), {"key": _DAILY_RUN_LOCK_KEY}
+            ).scalar()
+            if not lock_acquired:
+                logger.info("Another run_daily execution is already in progress — exiting.")
+                return
 
-        # Idempotency guard: never send the same day's digest twice.
-        existing_digest = db.query(DailyDigest).filter_by(digest_date=today).first()
-        if existing_digest and existing_digest.is_sent:
-            logger.info("Digest for %s already sent at %s — exiting.", today, existing_digest.sent_at)
-            return
-
-        provider = get_llm_provider(settings)
-        budget = CallBudget(settings.llm_daily_call_budget)
-
-        # Step A — fetch new content from every active source.
-        _fetch_new_articles(
-            db,
-            today_start,
-            provider,
-            budget,
-            settings.max_articles_per_day,
-            request_delay_seconds=settings.llm_request_delay_seconds,
-        )
-
-        # Step B — summarize any article that doesn't have a summary yet.
-        unsummarized = db.query(Article).filter(Article.summary.is_(None)).all()
-        summarized_count = summarize_articles(
-            db, provider, unsummarized, budget=budget, request_delay_seconds=settings.llm_request_delay_seconds
-        )
-        logger.info("Step B: summarized %d article(s)", summarized_count)
-
-        # Step E — chunk + embed any article that hasn't been embedded yet,
-        # so RAG chat (/chat) can answer questions about it. Runs right after
-        # summarization since embedding prefers the summary as a fallback
-        # when full content isn't available (see build_chunk_source_text).
-        embedding_provider = get_embedding_provider(settings)
-        unembedded = db.query(Article).filter(Article.embedded_at.is_(None)).all()
-        embedded_count = embed_articles(
-            db,
-            embedding_provider,
-            unembedded,
-            chunk_size=settings.rag_chunk_size_chars,
-            overlap=settings.rag_chunk_overlap_chars,
-        )
-        logger.info("Step E: embedded %d article(s)", embedded_count)
-
-        # Step C — build today's digest from articles published since today_start.
-        todays_articles = (
-            db.query(Article)
-            .options(joinedload(Article.source))
-            .filter(Article.published_at >= today_start)
-            .all()
-        )
-        digest_html = build_digest(
-            provider, todays_articles, budget=budget, request_delay_seconds=settings.llm_request_delay_seconds
-        )
-
-        digest_row = existing_digest or DailyDigest(digest_date=today)
-        digest_row.summary_text = digest_html
-        digest_row.article_count = len(todays_articles)
-        db.add(digest_row)
-        db.commit()
-        logger.info("Step C: built digest for %s with %d article(s)", today, len(todays_articles))
-
-        # Step D — email it, unless this is a dry run.
-        if dry_run:
-            logger.info("Dry run: skipping email send. Digest preview:\n%s", digest_html)
-            return
-
-        if not settings.digest_recipient_email:
-            logger.warning("DIGEST_RECIPIENT_EMAIL is not set — skipping send.")
-            return
-
-        sender = get_email_sender(settings)
-        sender.send(
-            to=settings.digest_recipient_email,
-            subject=f"ملخص أخبار الذكاء الاصطناعي — {today.isoformat()}",
-            html_body=digest_html,
-        )
-        digest_row.sent_at = datetime.now(timezone.utc)
-        db.commit()
-        logger.info("Step D: digest emailed to %s", settings.digest_recipient_email)
-
+        try:
+            _run(db, settings, dry_run)
+        finally:
+            if is_postgres:
+                db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _DAILY_RUN_LOCK_KEY})
+                db.commit()
     finally:
         db.close()
+
+
+def _run(db, settings, dry_run: bool) -> None:
+    # UTC, not the server's local calendar day — every cutoff computed
+    # below is UTC-based, and mixing local "today" with a UTC cutoff
+    # causes digests to mislabel articles near midnight.
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    today_start = utc_day_start(now)
+
+    # Idempotency guard: never send the same day's digest twice.
+    existing_digest = db.query(DailyDigest).filter_by(digest_date=today).first()
+    if existing_digest and existing_digest.is_sent:
+        logger.info("Digest for %s already sent at %s — exiting.", today, existing_digest.sent_at)
+        return
+
+    provider = get_llm_provider(settings)
+    budget = CallBudget(settings.llm_daily_call_budget)
+
+    # Step A — fetch new content from every active source.
+    _fetch_new_articles(
+        db,
+        today_start,
+        provider,
+        budget,
+        settings.max_articles_per_day,
+        request_delay_seconds=settings.llm_request_delay_seconds,
+    )
+
+    # Step B — summarize any article that doesn't have a summary yet.
+    unsummarized = db.query(Article).filter(Article.summary.is_(None)).all()
+    summarized_count = summarize_articles(
+        db, provider, unsummarized, budget=budget, request_delay_seconds=settings.llm_request_delay_seconds
+    )
+    logger.info("Step B: summarized %d article(s)", summarized_count)
+
+    # Step E — chunk + embed any article that hasn't been embedded yet,
+    # so RAG chat (/chat) can answer questions about it. Runs right after
+    # summarization since embedding prefers the summary as a fallback
+    # when full content isn't available (see build_chunk_source_text).
+    embedding_provider = get_embedding_provider(settings)
+    unembedded = db.query(Article).filter(Article.embedded_at.is_(None)).all()
+    embedded_count = embed_articles(
+        db,
+        embedding_provider,
+        unembedded,
+        chunk_size=settings.rag_chunk_size_chars,
+        overlap=settings.rag_chunk_overlap_chars,
+    )
+    logger.info("Step E: embedded %d article(s)", embedded_count)
+
+    # Step C — build today's digest from articles published since today_start.
+    todays_articles = (
+        db.query(Article)
+        .options(joinedload(Article.source))
+        .filter(Article.published_at >= today_start)
+        .all()
+    )
+    digest_html = build_digest(
+        provider, todays_articles, budget=budget, request_delay_seconds=settings.llm_request_delay_seconds
+    )
+
+    digest_row = existing_digest or DailyDigest(digest_date=today)
+    digest_row.summary_text = digest_html
+    digest_row.article_count = len(todays_articles)
+    db.add(digest_row)
+    db.commit()
+    logger.info("Step C: built digest for %s with %d article(s)", today, len(todays_articles))
+
+    # Step D — email it, unless this is a dry run.
+    if dry_run:
+        logger.info("Dry run: skipping email send. Digest preview:\n%s", digest_html)
+        return
+
+    if not settings.digest_recipient_email:
+        logger.warning("DIGEST_RECIPIENT_EMAIL is not set — skipping send.")
+        return
+
+    sender = get_email_sender(settings)
+    sender.send(
+        to=settings.digest_recipient_email,
+        subject=f"ملخص أخبار الذكاء الاصطناعي — {today.isoformat()}",
+        html_body=digest_html,
+    )
+    digest_row.sent_at = datetime.now(timezone.utc)
+    db.commit()
+    logger.info("Step D: digest emailed to %s", settings.digest_recipient_email)
 
 
 def _parse_args() -> argparse.Namespace:
